@@ -73,9 +73,16 @@ fn format_message(req: &AskRequest) -> String {
     }
     msg.push('\n');
 
-    // Code
+    // Code (truncate at char boundary to avoid panic on multibyte strings)
     let code = if req.code.len() > 2000 {
-        format!("{}...(truncated)", &req.code[..2000])
+        let end = req
+            .code
+            .char_indices()
+            .map(|(i, _)| i)
+            .take_while(|&i| i <= 2000)
+            .last()
+            .unwrap_or(0);
+        format!("{}...(truncated)", &req.code[..end])
     } else {
         req.code.clone()
     };
