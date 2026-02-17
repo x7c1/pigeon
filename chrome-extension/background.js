@@ -31,6 +31,7 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
+// TODO: extract action names ("pigeonSend", "sendToServer") into shared constants after TS migration
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === "pigeon-send") {
     chrome.tabs.sendMessage(tab.id, { action: "pigeonSend" });
