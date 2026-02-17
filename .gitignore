@@ -20,7 +20,6 @@ target
 
 # Local files
 *.local
-claude.local/
 .envrc
 
 # Editor directories and files
