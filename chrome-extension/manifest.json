@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Pigeon",
+  "version": "0.1.0",
+  "description": "Send selected code from GitHub PR diffs to a CLI tool via tmux",
+  "permissions": ["contextMenus", "activeTab", "nativeMessaging"],
+  "host_permissions": [
+    "https://github.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://github.com/*/pull/*/files*",
+        "https://github.com/*/pull/*/changes*"
+      ],
+      "js": ["content.js"]
+    }
+  ],
+  "icons": {
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}
