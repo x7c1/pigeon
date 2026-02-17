@@ -9,6 +9,7 @@ struct AskRequest {
     end_line: Option<u64>,
     code: String,
     question: String,
+    tmux_target: Option<String>,
 }
 
 /// Read a message using Native Messaging protocol (4-byte little-endian length prefix)
@@ -31,8 +32,9 @@ fn write_message(msg: &str) {
     let _ = io::stdout().flush();
 }
 
-fn tmux_target() -> String {
-    // Read from ~/.config/pigeon/config
+/// Resolve tmux target: config file > extension request > default
+fn resolve_tmux_target(req_target: Option<&str>) -> String {
+    // 1. Config file takes precedence (machine-level override)
     if let Ok(home) = std::env::var("HOME") {
         let config_path = format!("{home}/.config/pigeon/config");
         if let Ok(contents) = std::fs::read_to_string(&config_path) {
@@ -47,6 +49,15 @@ fn tmux_target() -> String {
             }
         }
     }
+
+    // 2. Use repo name from extension if provided
+    if let Some(t) = req_target {
+        if !t.is_empty() {
+            return t.to_string();
+        }
+    }
+
+    // 3. Default
     "claude".to_string()
 }
 
@@ -82,8 +93,7 @@ fn format_message(req: &AskRequest) -> String {
     msg
 }
 
-fn send_to_tmux(message: &str) -> Result<(), String> {
-    let target = tmux_target();
+fn send_to_tmux(message: &str, target: &str) -> Result<(), String> {
 
     Command::new("tmux")
         .args(["send-keys", "-t", &target, message])
@@ -116,8 +126,9 @@ fn main() {
         };
 
         let message = format_message(&req);
+        let target = resolve_tmux_target(req.tmux_target.as_deref());
 
-        match send_to_tmux(&message) {
+        match send_to_tmux(&message, &target) {
             Ok(()) => write_message(r#"{"ok":true}"#),
             Err(e) => write_message(&format!(r#"{{"ok":false,"error":"{e}"}}"#)),
         }

@@ -119,6 +119,7 @@
       end_line: context.endLine,
       code: context.code,
       question: question || "",
+      tmux_target: context.pr?.repo || "",
       pr: context.pr,
       url: context.url,
     };
