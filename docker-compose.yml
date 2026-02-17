@@ -1,0 +1,44 @@
+services:
+  claude-code:
+    build:
+      context: .
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    volumes:
+      - .:/projects/pigeon
+      - ./claude.local/.claude:/home/developer/.claude
+      - ./claude.local/.claude.json:/home/developer/.claude.json
+      - ./claude.local/.bash_history:/home/developer/.bash_history
+      - type: bind
+        source: ${HOST_HOME:-~}/.claude/CLAUDE.md
+        target: /home/developer/.claude/CLAUDE.md
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HOST_HOME:-~}/.claude/.credentials.json
+        target: /home/developer/.claude/.credentials.json
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HOST_HOME:-~}/.config/git
+        target: /home/developer/.config/git
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HOST_HOME:-~}/.config/gh
+        target: /home/developer/.config/gh
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HOST_HOME:-~}/.ssh
+        target: /home/developer/.ssh
+        read_only: true
+        bind:
+          create_host_path: false
+      - ./claude.local/.npm-global:/home/developer/.npm-global
+      - ./claude.local/.local:/home/developer/.local
+    stdin_open: true
+    tty: true
+    working_dir: /projects/pigeon
+    command: /projects/pigeon/scripts/start-claude-code.sh
