@@ -94,7 +94,6 @@ fn format_message(req: &AskRequest) -> String {
 }
 
 fn send_to_tmux(message: &str, target: &str) -> Result<(), String> {
-
     Command::new("tmux")
         .args(["send-keys", "-t", &target, message])
         .status()
