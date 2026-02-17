@@ -111,7 +111,6 @@ fn main() {
     // Native Messaging Host receives messages one at a time.
     // Chrome starts and stops the process as needed.
     while let Ok(raw) = read_message() {
-
         let req: AskRequest = match serde_json::from_str(&raw) {
             Ok(r) => r,
             Err(e) => {
