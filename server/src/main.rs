@@ -95,12 +95,12 @@ fn format_message(req: &AskRequest) -> String {
 
 fn send_to_tmux(message: &str, target: &str) -> Result<(), String> {
     Command::new("tmux")
-        .args(["send-keys", "-t", &target, message])
+        .args(["send-keys", "-t", target, message])
         .status()
         .map_err(|e| format!("Failed to run tmux: {e}"))?;
 
     Command::new("tmux")
-        .args(["send-keys", "-t", &target, "Enter"])
+        .args(["send-keys", "-t", target, "Enter"])
         .status()
         .map_err(|e| format!("Failed to run tmux: {e}"))?;
 
@@ -110,11 +110,7 @@ fn send_to_tmux(message: &str, target: &str) -> Result<(), String> {
 fn main() {
     // Native Messaging Host receives messages one at a time.
     // Chrome starts and stops the process as needed.
-    loop {
-        let raw = match read_message() {
-            Ok(r) => r,
-            Err(_) => break, // stdin closed = Chrome disconnected
-        };
+    while let Ok(raw) = read_message() {
 
         let req: AskRequest = match serde_json::from_str(&raw) {
             Ok(r) => r,
