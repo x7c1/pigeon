@@ -1,6 +1,6 @@
 # Session Selection Modal
 
-Status: Open
+Status: Completed
 
 ## Overview
 

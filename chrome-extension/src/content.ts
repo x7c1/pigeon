@@ -35,6 +35,17 @@
     [key: string]: unknown;
   }
 
+  interface ListSessionsResponse {
+    ok: boolean;
+    sessions?: string[];
+    error?: string;
+  }
+
+  interface SendResponse {
+    ok: boolean;
+    error?: string;
+  }
+
   // Extract file path from a table's aria-label (React UI)
   // e.g. "Diff for: path/to/file.ts"
   // e.g. "Diff for: old/path.ts renamed to new/path.ts"
@@ -260,42 +271,226 @@
     return { context, startElement };
   }
 
-  // Send to server via background script (to avoid CORS)
-  async function sendToTmux(
+  // --- Modal ---
+
+  const MODAL_ID = "pigeon-modal";
+
+  function createModal(): HTMLDivElement {
+    const existing = document.getElementById(MODAL_ID);
+    if (existing) existing.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = MODAL_ID;
+    overlay.innerHTML = `
+      <div data-pigeon-backdrop style="
+        position: fixed; inset: 0; z-index: 100000;
+        background: rgba(0,0,0,0.5); display: flex;
+        align-items: center; justify-content: center;
+      ">
+        <div data-pigeon-dialog style="
+          background: #1c2128; color: #e6edf3; border-radius: 12px;
+          padding: 20px; width: 400px; max-width: 90vw;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.5); font-family: system-ui, sans-serif;
+        ">
+          <div style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">
+            Send to tmux session
+          </div>
+
+          <div data-pigeon-loading style="text-align: center; padding: 20px; color: #8b949e;">
+            Loading sessions...
+          </div>
+
+          <div data-pigeon-content style="display: none;">
+            <div data-pigeon-error style="
+              display: none; padding: 8px 12px; margin-bottom: 12px;
+              background: #3d1f28; border: 1px solid #d73a49; border-radius: 6px;
+              color: #f85149; font-size: 13px;
+            "></div>
+
+            <label style="display: block; margin-bottom: 12px;">
+              <div style="font-size: 13px; color: #8b949e; margin-bottom: 4px;">Session</div>
+              <select data-pigeon-session style="
+                width: 100%; padding: 6px 8px; border-radius: 6px;
+                background: #0d1117; color: #e6edf3; border: 1px solid #30363d;
+                font-size: 14px;
+              "></select>
+            </label>
+
+            <label style="display: block; margin-bottom: 16px;">
+              <div style="font-size: 13px; color: #8b949e; margin-bottom: 4px;">Question</div>
+              <textarea data-pigeon-question rows="3" style="
+                width: 100%; padding: 6px 8px; border-radius: 6px;
+                background: #0d1117; color: #e6edf3; border: 1px solid #30363d;
+                font-size: 14px; resize: vertical; font-family: inherit;
+                box-sizing: border-box;
+              "></textarea>
+            </label>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px;">
+              <button data-pigeon-cancel style="
+                padding: 6px 16px; border-radius: 6px; border: 1px solid #30363d;
+                background: #21262d; color: #e6edf3; cursor: pointer; font-size: 13px;
+              ">Cancel</button>
+              <button data-pigeon-send style="
+                padding: 6px 16px; border-radius: 6px; border: none;
+                background: #238636; color: white; cursor: pointer; font-size: 13px;
+                font-weight: 600;
+              ">Send</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
+  function closeModal(): void {
+    document.getElementById(MODAL_ID)?.remove();
+  }
+
+  async function fetchSessions(): Promise<ListSessionsResponse> {
+    return chrome.runtime.sendMessage({ action: "listSessions" });
+  }
+
+  async function showModal(
     context: SelectionContext,
-    question: string,
     startElement: Element,
   ): Promise<void> {
-    const { debugMode } = await chrome.storage.local.get("debugMode");
-    const payload = {
-      file: context.file,
-      start_line: context.startLine,
-      end_line: context.endLine,
-      side: context.side,
-      code: context.code,
-      question: question || "",
-      tmux_target: context.pr?.repo || "",
-      pr: context.pr,
-      url: context.url,
-      debug_html: debugMode ? buildDebugInfo(startElement) : undefined,
-    };
+    const overlay = createModal();
 
+    const loadingEl = overlay.querySelector(
+      "[data-pigeon-loading]",
+    ) as HTMLElement;
+    const contentEl = overlay.querySelector(
+      "[data-pigeon-content]",
+    ) as HTMLElement;
+    const errorEl = overlay.querySelector("[data-pigeon-error]") as HTMLElement;
+    const selectEl = overlay.querySelector(
+      "[data-pigeon-session]",
+    ) as HTMLSelectElement;
+    const questionEl = overlay.querySelector(
+      "[data-pigeon-question]",
+    ) as HTMLTextAreaElement;
+    const sendBtn = overlay.querySelector(
+      "[data-pigeon-send]",
+    ) as HTMLButtonElement;
+    const cancelBtn = overlay.querySelector(
+      "[data-pigeon-cancel]",
+    ) as HTMLButtonElement;
+    const backdrop = overlay.querySelector(
+      "[data-pigeon-backdrop]",
+    ) as HTMLElement;
+
+    // Fetch sessions
+    let sessions: string[] = [];
     try {
-      const response = await chrome.runtime.sendMessage({
-        action: "sendToServer",
-        payload,
-      });
-      if (response?.ok) {
-        showNotification("Sent to tmux session");
+      const resp = await fetchSessions();
+      if (!resp.ok) {
+        loadingEl.style.display = "none";
+        contentEl.style.display = "block";
+        errorEl.style.display = "block";
+        errorEl.textContent = resp.error || "Failed to list sessions";
+        sendBtn.disabled = true;
+        sendBtn.style.opacity = "0.5";
       } else {
-        showNotification(response?.error || "Failed to send", true);
+        sessions = resp.sessions || [];
+        loadingEl.style.display = "none";
+        contentEl.style.display = "block";
+
+        if (sessions.length === 0) {
+          errorEl.style.display = "block";
+          errorEl.textContent = "No tmux sessions found";
+          sendBtn.disabled = true;
+          sendBtn.style.opacity = "0.5";
+        } else {
+          for (const name of sessions) {
+            const opt = document.createElement("option");
+            opt.value = name;
+            opt.textContent = name;
+            selectEl.appendChild(opt);
+          }
+          // Pre-select session matching the repo name if available
+          const repoName = context.pr?.repo;
+          if (repoName && sessions.includes(repoName)) {
+            selectEl.value = repoName;
+          }
+        }
       }
     } catch (e) {
+      closeModal();
       showNotification(
-        `Extension error: ${e instanceof Error ? e.message : String(e)}`,
+        `Failed to connect: ${e instanceof Error ? e.message : String(e)}`,
         true,
       );
+      return;
     }
+
+    // Set placeholder text for the question
+    const fileHint = `${context.file}:${context.startLine || "?"}${context.side === "old" ? " (deleted)" : ""}`;
+    questionEl.placeholder = `Ask about ${fileHint}`;
+    questionEl.focus();
+
+    // Event handlers
+    const doSend = async () => {
+      const target = selectEl.value;
+      if (!target) return;
+
+      sendBtn.disabled = true;
+      sendBtn.textContent = "Sending...";
+
+      const { debugMode } = await chrome.storage.local.get("debugMode");
+      const payload = {
+        action: "send",
+        file: context.file,
+        start_line: context.startLine,
+        end_line: context.endLine,
+        side: context.side,
+        code: context.code,
+        question: questionEl.value || "",
+        tmux_target: target,
+        debug_html: debugMode ? buildDebugInfo(startElement) : undefined,
+      };
+
+      try {
+        const response: SendResponse = await chrome.runtime.sendMessage({
+          action: "sendToServer",
+          payload,
+        });
+        closeModal();
+        if (response?.ok) {
+          showNotification("Sent to tmux session");
+        } else {
+          showNotification(response?.error || "Failed to send", true);
+        }
+      } catch (e) {
+        closeModal();
+        showNotification(
+          `Extension error: ${e instanceof Error ? e.message : String(e)}`,
+          true,
+        );
+      }
+    };
+
+    sendBtn.addEventListener("click", doSend);
+    cancelBtn.addEventListener("click", closeModal);
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) closeModal();
+    });
+
+    // Keyboard handling
+    const keyHandler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeModal();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        doSend();
+      }
+    };
+    overlay.addEventListener("keydown", keyHandler);
   }
 
   function showNotification(msg: string, isError = false): void {
@@ -314,28 +509,20 @@
     }, 2000);
   }
 
+  function triggerPigeon(): void {
+    const result = getSelectionContext();
+    if (!result) {
+      showNotification("No code selected", true);
+      return;
+    }
+    showModal(result.context, result.startElement);
+  }
+
   // Handle messages from context menu
   chrome.runtime.onMessage.addListener(
     (msg, _sender, sendResponse): undefined => {
       if (msg.action === "pigeonSend") {
-        const result = getSelectionContext();
-        if (!result) {
-          showNotification("No code selected", true);
-          sendResponse({ ok: false });
-          return;
-        }
-
-        const { context, startElement } = result;
-        const question = prompt(
-          `Ask about ${context.file}:${context.startLine || "?"}${context.side === "old" ? " (deleted)" : ""}`,
-          "",
-        );
-        if (question === null) {
-          sendResponse({ ok: false });
-          return;
-        }
-
-        sendToTmux(context, question, startElement);
+        triggerPigeon();
         sendResponse({ ok: true });
       }
     },
@@ -345,20 +532,7 @@
   document.addEventListener("keydown", (e) => {
     if (e.ctrlKey && e.shiftKey && e.key === "L") {
       e.preventDefault();
-      const result = getSelectionContext();
-      if (!result) {
-        showNotification("No code selected", true);
-        return;
-      }
-
-      const { context, startElement } = result;
-      const question = prompt(
-        `Ask about ${context.file}:${context.startLine || "?"}${context.side === "old" ? " (deleted)" : ""}`,
-        "",
-      );
-      if (question === null) return;
-
-      sendToTmux(context, question, startElement);
+      triggerPigeon();
     }
   });
 })();

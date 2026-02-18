@@ -1,6 +1,6 @@
 # Rich UI
 
-Status: Open
+Status: Completed
 
 ## Overview
 
