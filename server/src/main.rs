@@ -7,6 +7,8 @@ struct AskRequest {
     file: String,
     start_line: Option<u64>,
     end_line: Option<u64>,
+    /// "old" for deleted lines, "new" (or absent) for current/added lines
+    side: Option<String>,
     code: String,
     question: String,
     tmux_target: Option<String>,
@@ -71,6 +73,9 @@ fn format_message(req: &AskRequest) -> String {
         (Some(s), Some(e)) if s != e => msg.push_str(&format!(":{s}-{e}")),
         (Some(s), _) => msg.push_str(&format!(":{s}")),
         _ => {}
+    }
+    if req.side.as_deref() == Some("old") {
+        msg.push_str(" (deleted lines)");
     }
     msg.push('\n');
 

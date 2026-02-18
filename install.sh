@@ -5,15 +5,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BINARY_SRC="$SCRIPT_DIR/server/target/release/pigeon-host"
 BINARY_DST="$HOME/.local/bin/pigeon-host"
 
-# Build and install the binary
-if [ ! -f "$BINARY_SRC" ]; then
-    echo "Building..."
-    cd "$SCRIPT_DIR/server"
-    cargo build --release
-    cd "$SCRIPT_DIR"
-fi
+# Build the binary (always rebuild to pick up changes)
+echo "Building..."
+cd "$SCRIPT_DIR/server"
+cargo build --release
+cd "$SCRIPT_DIR"
 
 mkdir -p "$HOME/.local/bin"
+rm -f "$BINARY_DST"
 cp "$BINARY_SRC" "$BINARY_DST"
 chmod +x "$BINARY_DST"
 

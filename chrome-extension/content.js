@@ -134,18 +134,39 @@
     return JSON.stringify({ trace, ancestors, containerChildren });
   }
 
-  // Extract line number from the selection
+  // Extract line number and side (new/old) from the selection
   function findLineNumber(node) {
     const element =
       node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+
+    // React UI (split diff): the <td> itself carries side and line number
+    const cell = element.closest("td[data-diff-side]");
+    if (cell) {
+      const num = cell.getAttribute("data-line-number");
+      if (num) {
+        return {
+          line: parseInt(num, 10),
+          side: cell.getAttribute("data-diff-side") === "left" ? "old" : "new",
+        };
+      }
+    }
+
+    // Fallback: classic unified diff (no data-diff-side)
     const row = element.closest("tr");
     if (!row) return null;
 
     const cells = row.querySelectorAll("[data-line-number]");
-    // Prefer the right side (new version)
-    for (let i = cells.length - 1; i >= 0; i--) {
-      const num = cells[i].getAttribute("data-line-number");
-      if (num) return parseInt(num, 10);
+    if (cells.length >= 2 && cells[cells.length - 1].getAttribute("data-line-number")) {
+      return {
+        line: parseInt(cells[cells.length - 1].getAttribute("data-line-number"), 10),
+        side: "new",
+      };
+    }
+    if (cells.length >= 1 && cells[0].getAttribute("data-line-number")) {
+      return {
+        line: parseInt(cells[0].getAttribute("data-line-number"), 10),
+        side: "old",
+      };
     }
     return null;
   }
@@ -163,8 +184,8 @@
         : selection.anchorNode;
 
     const filePath = findFilePath(startElement);
-    const startLine = findLineNumber(selection.anchorNode);
-    const endLine = findLineNumber(selection.focusNode);
+    const startInfo = findLineNumber(selection.anchorNode);
+    const endInfo = findLineNumber(selection.focusNode);
 
     const prMatch = window.location.pathname.match(
       /\/([^/]+)\/([^/]+)\/pull\/(\d+)/
@@ -173,10 +194,17 @@
       ? { owner: prMatch[1], repo: prMatch[2], number: prMatch[3] }
       : null;
 
+    // Determine if the selection spans deleted lines
+    const startSide = startInfo?.side || null;
+    const endSide = endInfo?.side || null;
+    const side =
+      startSide === "old" || endSide === "old" ? "old" : startSide || endSide;
+
     const context = {
       file: filePath || "(unknown file)",
-      startLine,
-      endLine,
+      startLine: startInfo?.line || null,
+      endLine: endInfo?.line || null,
+      side,
       code: selectedText,
       pr: prInfo,
       url: window.location.href,
@@ -191,6 +219,7 @@
       file: context.file,
       start_line: context.startLine,
       end_line: context.endLine,
+      side: context.side,
       code: context.code,
       question: question || "",
       tmux_target: context.pr?.repo || "",
@@ -242,7 +271,7 @@
 
       const { context, startElement } = result;
       const question = prompt(
-        `Ask about ${context.file}:${context.startLine || "?"}`,
+        `Ask about ${context.file}:${context.startLine || "?"}${context.side === "old" ? " (deleted)" : ""}`,
         ""
       );
       if (question === null) {
@@ -267,7 +296,7 @@
 
       const { context, startElement } = result;
       const question = prompt(
-        `Ask about ${context.file}:${context.startLine || "?"}`,
+        `Ask about ${context.file}:${context.startLine || "?"}${context.side === "old" ? " (deleted)" : ""}`,
         ""
       );
       if (question === null) return;
