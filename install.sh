@@ -16,6 +16,12 @@ fi
 mkdir -p "$HOME/.local/bin"
 cp "$BINARY_SRC" "$BINARY_DST"
 chmod +x "$BINARY_DST"
+
+# On macOS, re-sign the binary so it can be launched by Chrome Native Messaging
+if [ "$(uname)" = "Darwin" ]; then
+    codesign -s - -f "$BINARY_DST" 2>/dev/null
+fi
+
 echo "Installed binary: $BINARY_DST"
 
 # Get the Chrome extension ID
@@ -38,10 +44,20 @@ MANIFEST='{
   "allowed_origins": ["chrome-extension://'"$EXT_ID"'/"]
 }'
 
-# Install for both Chrome and Chromium
-for dir in \
-    "$HOME/.config/google-chrome/NativeMessagingHosts" \
-    "$HOME/.config/chromium/NativeMessagingHosts"; do
+# Install for Chrome and Chromium (OS-dependent paths)
+if [ "$(uname)" = "Darwin" ]; then
+    MANIFEST_DIRS=(
+        "$HOME/Library/Application Support/Google/Chrome/NativeMessagingHosts"
+        "$HOME/Library/Application Support/Chromium/NativeMessagingHosts"
+    )
+else
+    MANIFEST_DIRS=(
+        "$HOME/.config/google-chrome/NativeMessagingHosts"
+        "$HOME/.config/chromium/NativeMessagingHosts"
+    )
+fi
+
+for dir in "${MANIFEST_DIRS[@]}"; do
     mkdir -p "$dir"
     echo "$MANIFEST" > "$dir/pigeon.json"
     echo "Installed manifest: $dir/pigeon.json"

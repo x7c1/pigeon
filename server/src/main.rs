@@ -100,13 +100,31 @@ fn format_message(req: &AskRequest) -> String {
     msg
 }
 
+/// Find tmux binary path. Chrome Native Messaging launches with a minimal PATH,
+/// so we check common locations where package managers install tmux.
+fn find_tmux() -> String {
+    let candidates = [
+        "/opt/homebrew/bin/tmux", // Homebrew on Apple Silicon
+        "/usr/local/bin/tmux",    // Homebrew on Intel Mac / Linux manual install
+        "/usr/bin/tmux",          // System package manager
+    ];
+    for path in candidates {
+        if std::path::Path::new(path).exists() {
+            return path.to_string();
+        }
+    }
+    "tmux".to_string()
+}
+
 fn send_to_tmux(message: &str, target: &str) -> Result<(), String> {
-    Command::new("tmux")
+    let tmux = find_tmux();
+
+    Command::new(&tmux)
         .args(["send-keys", "-t", target, message])
         .status()
         .map_err(|e| format!("Failed to run tmux: {e}"))?;
 
-    Command::new("tmux")
+    Command::new(&tmux)
         .args(["send-keys", "-t", target, "Enter"])
         .status()
         .map_err(|e| format!("Failed to run tmux: {e}"))?;
