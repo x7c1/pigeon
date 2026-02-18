@@ -431,12 +431,14 @@
     }
 
     // Set placeholder text for the question
-    const startLine = context.startLine || "?";
-    const endLine = context.endLine;
-    const lineRange =
-      endLine && endLine !== context.startLine
-        ? `${startLine}-${endLine}`
-        : `${startLine}`;
+    const s = context.startLine;
+    const e = context.endLine;
+    let lineRange: string;
+    if (s && e && s !== e) {
+      lineRange = `${Math.min(s, e)}-${Math.max(s, e)}`;
+    } else {
+      lineRange = `${s || "?"}`;
+    }
     const fileHint = `${context.file}:${lineRange}${context.side === "old" ? " (deleted)" : ""}`;
     questionEl.placeholder = `Ask about ${fileHint}`;
     questionEl.focus();
