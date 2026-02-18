@@ -1,13 +1,44 @@
-// content.js - Extract file path, line numbers, and selected text from GitHub PR diff pages
+// content.ts - Extract file path, line numbers, and selected text from GitHub PR diff pages
 
-(function () {
-  "use strict";
-  console.log("pigeon: content.js loaded");
+(() => {
+  console.log("pigeon: content.ts loaded");
+
+  interface LineInfo {
+    line: number;
+    side: "old" | "new";
+  }
+
+  interface PrInfo {
+    owner: string;
+    repo: string;
+    number: string;
+  }
+
+  interface SelectionContext {
+    file: string;
+    startLine: number | null;
+    endLine: number | null;
+    side: string | null;
+    code: string;
+    pr: PrInfo | null;
+    url: string;
+  }
+
+  interface SelectionResult {
+    context: SelectionContext;
+    startElement: Element;
+  }
+
+  interface DebugStrategy {
+    strategy: number | string;
+    found: string | null;
+    [key: string]: unknown;
+  }
 
   // Extract file path from a table's aria-label (React UI)
   // e.g. "Diff for: path/to/file.ts"
   // e.g. "Diff for: old/path.ts renamed to new/path.ts"
-  function parseAriaLabel(table) {
+  function parseAriaLabel(table: Element | null): string | null {
     const ariaLabel = table?.getAttribute("aria-label");
     if (!ariaLabel?.startsWith("Diff for: ")) return null;
     const pathPart = ariaLabel.slice("Diff for: ".length);
@@ -17,66 +48,69 @@
 
   // Find the closest diff container from the selection and extract file path.
   // When debugTrace is provided, each strategy records what it tried and found.
-  function findFilePath(element, debugTrace) {
+  function findFilePath(
+    element: Element,
+    debugTrace?: DebugStrategy[],
+  ): string | null {
     // Strategy 1: data-tagsearch-path / data-path on an ancestor (classic UI)
-    const pathAncestor = element.closest(
-      "[data-tagsearch-path], [data-path]"
-    );
+    const pathAncestor = element.closest("[data-tagsearch-path], [data-path]");
     if (pathAncestor) {
       const path =
         pathAncestor.getAttribute("data-tagsearch-path") ||
         pathAncestor.getAttribute("data-path");
       if (path) {
-        if (debugTrace) debugTrace.push({ strategy: 1, found: path });
+        debugTrace?.push({ strategy: 1, found: path });
         return path;
       }
     }
-    if (debugTrace) debugTrace.push({ strategy: 1, found: null });
+    debugTrace?.push({ strategy: 1, found: null });
 
     // Strategy 2: aria-label on the diff table (React UI)
     const table = element.closest("table[data-diff-anchor]");
     const ariaPath = parseAriaLabel(table);
     if (ariaPath) {
-      if (debugTrace) debugTrace.push({ strategy: 2, found: ariaPath });
+      debugTrace?.push({ strategy: 2, found: ariaPath });
       return ariaPath;
     }
-    if (debugTrace) {
-      debugTrace.push({
-        strategy: 2,
-        found: null,
-        tableAriaLabel: table?.getAttribute("aria-label") ?? null,
-      });
-    }
+    debugTrace?.push({
+      strategy: 2,
+      found: null,
+      tableAriaLabel: table?.getAttribute("aria-label") ?? null,
+    });
 
     // Strategy 3: Find the diff container and search within it
     const diffContainer = table
       ? table.closest('[id^="diff-"]') || table.parentElement
       : element.closest('[id^="diff-"]');
     if (!diffContainer) {
-      if (debugTrace) debugTrace.push({ strategy: 3, found: null, reason: "no diffContainer" });
+      debugTrace?.push({
+        strategy: 3,
+        found: null,
+        reason: "no diffContainer",
+      });
       return null;
     }
 
     const linkWithCode = diffContainer.querySelector(
-      'a.Link--primary code, a[href*="#diff-"] code'
+      'a.Link--primary code, a[href*="#diff-"] code',
     );
     if (linkWithCode) {
       const path = linkWithCode.textContent
-        .replace(/[\u200E\u200F\u200B\u200C\u200D\uFEFF]/g, "")
+        ?.replace(/\u200E|\u200F|\u200B|\u200C|\u200D|\uFEFF/g, "")
         .trim();
       if (path) {
-        if (debugTrace) debugTrace.push({ strategy: "3-link-code", found: path });
+        debugTrace?.push({ strategy: "3-link-code", found: path });
         return path;
       }
     }
 
     const link = diffContainer.querySelector(
-      'a[title][href*="#diff-"], a.Link--primary[title]'
+      'a[title][href*="#diff-"], a.Link--primary[title]',
     );
     if (link) {
       const title = link.getAttribute("title");
       if (title && (title.includes("/") || title.includes("."))) {
-        if (debugTrace) debugTrace.push({ strategy: "3-title", found: title });
+        debugTrace?.push({ strategy: "3-title", found: title });
         return title;
       }
     }
@@ -85,59 +119,67 @@
     if (copyBtn) {
       const val = copyBtn.getAttribute("value");
       if (val && (val.includes("/") || val.includes("."))) {
-        if (debugTrace) debugTrace.push({ strategy: "3-clipboard", found: val });
+        debugTrace?.push({ strategy: "3-clipboard", found: val });
         return val;
       }
     }
 
-    if (debugTrace) {
-      debugTrace.push({
-        strategy: 3,
-        found: null,
-        diffContainerId: diffContainer.id || null,
-      });
-    }
+    debugTrace?.push({
+      strategy: 3,
+      found: null,
+      diffContainerId: diffContainer.id || null,
+    });
     return null;
   }
 
   // Summarize an element: tag, key attributes (truncated)
-  function summarizeElement(el) {
-    const attrs = {};
-    for (const attr of el.attributes || []) {
+  function summarizeElement(el: Element): {
+    tag: string;
+    attrs: Record<string, string>;
+  } {
+    const attrs: Record<string, string> = {};
+    for (const attr of el.attributes) {
       attrs[attr.name] = attr.value.substring(0, 200);
     }
     return { tag: el.tagName.toLowerCase(), attrs };
   }
 
   // Build debug info: strategy trace + DOM context around the selection
-  function buildDebugInfo(element) {
+  function buildDebugInfo(element: Element): string {
     // 1. Strategy execution trace
-    const trace = [];
+    const trace: DebugStrategy[] = [];
     findFilePath(element, trace);
 
     // 2. Ancestor chain from selection to body
-    const ancestors = [];
-    let el = element;
+    const ancestors: { tag: string; attrs: Record<string, string> }[] = [];
+    let el: Element | null = element;
     while (el && el !== document.body && ancestors.length < 15) {
       ancestors.push(summarizeElement(el));
       el = el.parentElement;
     }
 
     // 3. Diff container's direct children (siblings of the table, file header, etc.)
-    const table = element.closest("table[data-diff-anchor]") || element.closest("table");
-    const diffContainer = table?.closest('[id^="diff-"]') || table?.parentElement?.parentElement;
-    let containerChildren = null;
+    const table =
+      element.closest("table[data-diff-anchor]") || element.closest("table");
+    const diffContainer =
+      table?.closest('[id^="diff-"]') || table?.parentElement?.parentElement;
+    let containerChildren:
+      | { tag: string; attrs: Record<string, string> }[]
+      | null = null;
     if (diffContainer) {
-      containerChildren = Array.from(diffContainer.children).map(summarizeElement);
+      containerChildren = Array.from(diffContainer.children).map(
+        summarizeElement,
+      );
     }
 
     return JSON.stringify({ trace, ancestors, containerChildren });
   }
 
   // Extract line number and side (new/old) from the selection
-  function findLineNumber(node) {
+  function findLineNumber(node: Node): LineInfo | null {
     const element =
-      node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+      node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as Element);
+    if (!element) return null;
 
     // React UI (split diff): the <td> itself carries side and line number
     const cell = element.closest("td[data-diff-side]");
@@ -145,7 +187,7 @@
       const num = cell.getAttribute("data-line-number");
       if (num) {
         return {
-          line: parseInt(num, 10),
+          line: Number.parseInt(num, 10),
           side: cell.getAttribute("data-diff-side") === "left" ? "old" : "new",
         };
       }
@@ -156,41 +198,47 @@
     if (!row) return null;
 
     const cells = row.querySelectorAll("[data-line-number]");
-    if (cells.length >= 2 && cells[cells.length - 1].getAttribute("data-line-number")) {
-      return {
-        line: parseInt(cells[cells.length - 1].getAttribute("data-line-number"), 10),
-        side: "new",
-      };
+    if (cells.length >= 2) {
+      const num = cells[cells.length - 1].getAttribute("data-line-number");
+      if (num) {
+        return { line: Number.parseInt(num, 10), side: "new" };
+      }
     }
-    if (cells.length >= 1 && cells[0].getAttribute("data-line-number")) {
-      return {
-        line: parseInt(cells[0].getAttribute("data-line-number"), 10),
-        side: "old",
-      };
+    if (cells.length >= 1) {
+      const num = cells[0].getAttribute("data-line-number");
+      if (num) {
+        return { line: Number.parseInt(num, 10), side: "old" };
+      }
     }
     return null;
   }
 
-  function getSelectionContext() {
+  function getSelectionContext(): SelectionResult | null {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed) return null;
 
     const selectedText = selection.toString().trim();
     if (!selectedText) return null;
 
+    const anchorNode = selection.anchorNode;
+    if (!anchorNode) return null;
+
     const startElement =
-      selection.anchorNode.nodeType === Node.TEXT_NODE
-        ? selection.anchorNode.parentElement
-        : selection.anchorNode;
+      anchorNode.nodeType === Node.TEXT_NODE
+        ? anchorNode.parentElement
+        : (anchorNode as Element);
+    if (!startElement) return null;
 
     const filePath = findFilePath(startElement);
-    const startInfo = findLineNumber(selection.anchorNode);
-    const endInfo = findLineNumber(selection.focusNode);
+    const startInfo = anchorNode ? findLineNumber(anchorNode) : null;
+    const endInfo = selection.focusNode
+      ? findLineNumber(selection.focusNode)
+      : null;
 
     const prMatch = window.location.pathname.match(
-      /\/([^/]+)\/([^/]+)\/pull\/(\d+)/
+      /\/([^/]+)\/([^/]+)\/pull\/(\d+)/,
     );
-    const prInfo = prMatch
+    const prInfo: PrInfo | null = prMatch
       ? { owner: prMatch[1], repo: prMatch[2], number: prMatch[3] }
       : null;
 
@@ -200,7 +248,7 @@
     const side =
       startSide === "old" || endSide === "old" ? "old" : startSide || endSide;
 
-    const context = {
+    const context: SelectionContext = {
       file: filePath || "(unknown file)",
       startLine: startInfo?.line || null,
       endLine: endInfo?.line || null,
@@ -213,7 +261,11 @@
   }
 
   // Send to server via background script (to avoid CORS)
-  async function sendToTmux(context, question, startElement) {
+  async function sendToTmux(
+    context: SelectionContext,
+    question: string,
+    startElement: Element,
+  ): Promise<void> {
     const { debugMode } = await chrome.storage.local.get("debugMode");
     const payload = {
       file: context.file,
@@ -233,17 +285,20 @@
         action: "sendToServer",
         payload,
       });
-      if (response && response.ok) {
+      if (response?.ok) {
         showNotification("Sent to tmux session");
       } else {
         showNotification(response?.error || "Failed to send", true);
       }
     } catch (e) {
-      showNotification("Extension error: " + e.message, true);
+      showNotification(
+        `Extension error: ${e instanceof Error ? e.message : String(e)}`,
+        true,
+      );
     }
   }
 
-  function showNotification(msg, isError = false) {
+  function showNotification(msg: string, isError = false): void {
     const el = document.createElement("div");
     el.textContent = msg;
     el.style.cssText = `
@@ -260,29 +315,31 @@
   }
 
   // Handle messages from context menu
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (msg.action === "pigeonSend") {
-      const result = getSelectionContext();
-      if (!result) {
-        showNotification("No code selected", true);
-        sendResponse({ ok: false });
-        return;
-      }
+  chrome.runtime.onMessage.addListener(
+    (msg, _sender, sendResponse): undefined => {
+      if (msg.action === "pigeonSend") {
+        const result = getSelectionContext();
+        if (!result) {
+          showNotification("No code selected", true);
+          sendResponse({ ok: false });
+          return;
+        }
 
-      const { context, startElement } = result;
-      const question = prompt(
-        `Ask about ${context.file}:${context.startLine || "?"}${context.side === "old" ? " (deleted)" : ""}`,
-        ""
-      );
-      if (question === null) {
-        sendResponse({ ok: false });
-        return;
-      }
+        const { context, startElement } = result;
+        const question = prompt(
+          `Ask about ${context.file}:${context.startLine || "?"}${context.side === "old" ? " (deleted)" : ""}`,
+          "",
+        );
+        if (question === null) {
+          sendResponse({ ok: false });
+          return;
+        }
 
-      sendToTmux(context, question, startElement);
-      sendResponse({ ok: true });
-    }
-  });
+        sendToTmux(context, question, startElement);
+        sendResponse({ ok: true });
+      }
+    },
+  );
 
   // Keyboard shortcut: Ctrl+Shift+L
   document.addEventListener("keydown", (e) => {
@@ -297,7 +354,7 @@
       const { context, startElement } = result;
       const question = prompt(
         `Ask about ${context.file}:${context.startLine || "?"}${context.side === "old" ? " (deleted)" : ""}`,
-        ""
+        "",
       );
       if (question === null) return;
 
