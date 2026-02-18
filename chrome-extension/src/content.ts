@@ -431,7 +431,13 @@
     }
 
     // Set placeholder text for the question
-    const fileHint = `${context.file}:${context.startLine || "?"}${context.side === "old" ? " (deleted)" : ""}`;
+    const startLine = context.startLine || "?";
+    const endLine = context.endLine;
+    const lineRange =
+      endLine && endLine !== context.startLine
+        ? `${startLine}-${endLine}`
+        : `${startLine}`;
+    const fileHint = `${context.file}:${lineRange}${context.side === "old" ? " (deleted)" : ""}`;
     questionEl.placeholder = `Ask about ${fileHint}`;
     questionEl.focus();
 
