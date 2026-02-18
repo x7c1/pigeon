@@ -411,10 +411,13 @@
             opt.textContent = name;
             selectEl.appendChild(opt);
           }
-          // Pre-select session matching the repo name if available
+          // Pre-select session matching the repo name by prefix
           const repoName = context.pr?.repo;
-          if (repoName && sessions.includes(repoName)) {
-            selectEl.value = repoName;
+          if (repoName) {
+            const match = sessions.find((s) => s.startsWith(repoName));
+            if (match) {
+              selectEl.value = match;
+            }
           }
         }
       }
