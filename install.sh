@@ -72,7 +72,7 @@ CONFIG_FILE="$CONFIG_DIR/config"
 if [ ! -f "$CONFIG_FILE" ]; then
     mkdir -p "$CONFIG_DIR"
     echo "# tmux session name (default: claude)" > "$CONFIG_FILE"
-    echo "tmux_target=claude" >> "$CONFIG_FILE"
+    echo "# tmux_target=claude" >> "$CONFIG_FILE"
     echo "Created config: $CONFIG_FILE"
 fi
 
