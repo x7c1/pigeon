@@ -289,7 +289,7 @@
       ">
         <div data-pigeon-dialog style="
           background: #1c2128; color: #e6edf3; border-radius: 12px;
-          padding: 20px; width: 400px; max-width: 90vw;
+          padding: 24px; width: 520px; max-width: 90vw;
           box-shadow: 0 8px 24px rgba(0,0,0,0.5); font-family: system-ui, sans-serif;
         ">
           <div style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">
@@ -318,7 +318,7 @@
 
             <label style="display: block; margin-bottom: 16px;">
               <div style="font-size: 13px; color: #8b949e; margin-bottom: 4px;">Question</div>
-              <textarea data-pigeon-question rows="3" style="
+              <textarea data-pigeon-question rows="6" style="
                 width: 100%; padding: 6px 8px; border-radius: 6px;
                 background: #0d1117; color: #e6edf3; border: 1px solid #30363d;
                 font-size: 14px; resize: vertical; font-family: inherit;
