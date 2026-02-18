@@ -7,9 +7,12 @@ struct AskRequest {
     file: String,
     start_line: Option<u64>,
     end_line: Option<u64>,
+    /// "old" for deleted lines, "new" (or absent) for current/added lines
+    side: Option<String>,
     code: String,
     question: String,
     tmux_target: Option<String>,
+    debug_html: Option<String>,
 }
 
 /// Read a message using Native Messaging protocol (4-byte little-endian length prefix)
@@ -70,6 +73,9 @@ fn format_message(req: &AskRequest) -> String {
         (Some(s), Some(e)) if s != e => msg.push_str(&format!(":{s}-{e}")),
         (Some(s), _) => msg.push_str(&format!(":{s}")),
         _ => {}
+    }
+    if req.side.as_deref() == Some("old") {
+        msg.push_str(" (deleted lines)");
     }
     msg.push('\n');
 
@@ -143,6 +149,14 @@ fn main() {
                 continue;
             }
         };
+
+        // Write debug HTML to file when file path extraction failed
+        if let Some(ref html) = req.debug_html {
+            if let Ok(home) = std::env::var("HOME") {
+                let debug_path = format!("{home}/.config/pigeon/debug.json");
+                let _ = std::fs::write(&debug_path, html);
+            }
+        }
 
         let message = format_message(&req);
         let target = resolve_tmux_target(req.tmux_target.as_deref());
