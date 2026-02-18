@@ -455,8 +455,14 @@
       const payload = {
         action: "send",
         file: context.file,
-        start_line: context.startLine,
-        end_line: context.endLine,
+        start_line:
+          context.startLine && context.endLine
+            ? Math.min(context.startLine, context.endLine)
+            : context.startLine,
+        end_line:
+          context.startLine && context.endLine
+            ? Math.max(context.startLine, context.endLine)
+            : context.endLine,
         side: context.side,
         code: context.code,
         question: questionEl.value || "",
