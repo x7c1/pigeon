@@ -58,4 +58,3 @@ The config file takes precedence over the extension-sent value.
 ## Notes
 
 - If GitHub's DOM structure changes, file path and line number extraction may break. Fix `content.js` in that case.
-- `~/.local/bin` must be in your `$PATH` (it is by default on Ubuntu).
