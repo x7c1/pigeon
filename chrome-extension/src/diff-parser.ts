@@ -2,8 +2,8 @@
 
 import type {
   DebugStrategy,
-  LineInfo,
-  PrInfo,
+  LineLocation,
+  PullRequest,
   SelectionContext,
   SelectionResult,
 } from "./types";
@@ -15,8 +15,8 @@ function parseAriaLabel(table: Element | null): string | null {
   const ariaLabel = table?.getAttribute("aria-label");
   if (!ariaLabel?.startsWith("Diff for: ")) return null;
   const pathPart = ariaLabel.slice("Diff for: ".length);
-  const idx = pathPart.indexOf(" renamed to ");
-  return idx >= 0 ? pathPart.slice(idx + " renamed to ".length) : pathPart;
+  const index = pathPart.indexOf(" renamed to ");
+  return index >= 0 ? pathPart.slice(index + " renamed to ".length) : pathPart;
 }
 
 // Find the closest diff container from the selection and extract file path.
@@ -88,12 +88,12 @@ export function findFilePath(
     }
   }
 
-  const copyBtn = diffContainer.querySelector("clipboard-copy[value]");
-  if (copyBtn) {
-    const val = copyBtn.getAttribute("value");
-    if (val && (val.includes("/") || val.includes("."))) {
-      debugTrace?.push({ strategy: "3-clipboard", found: val });
-      return val;
+  const copyButton = diffContainer.querySelector("clipboard-copy[value]");
+  if (copyButton) {
+    const value = copyButton.getAttribute("value");
+    if (value && (value.includes("/") || value.includes("."))) {
+      debugTrace?.push({ strategy: "3-clipboard", found: value });
+      return value;
     }
   }
 
@@ -106,15 +106,15 @@ export function findFilePath(
 }
 
 // Summarize an element: tag, key attributes (truncated)
-function summarizeElement(el: Element): {
+function summarizeElement(element: Element): {
   tag: string;
-  attrs: Record<string, string>;
+  attributes: Record<string, string>;
 } {
-  const attrs: Record<string, string> = {};
-  for (const attr of el.attributes) {
-    attrs[attr.name] = attr.value.substring(0, 200);
+  const attributes: Record<string, string> = {};
+  for (const attribute of element.attributes) {
+    attributes[attribute.name] = attribute.value.substring(0, 200);
   }
-  return { tag: el.tagName.toLowerCase(), attrs };
+  return { tag: element.tagName.toLowerCase(), attributes };
 }
 
 // Build debug info: strategy trace + DOM context around the selection
@@ -124,11 +124,14 @@ export function buildDebugInfo(element: Element): string {
   findFilePath(element, trace);
 
   // 2. Ancestor chain from selection to body
-  const ancestors: { tag: string; attrs: Record<string, string> }[] = [];
-  let el: Element | null = element;
-  while (el && el !== document.body && ancestors.length < 15) {
-    ancestors.push(summarizeElement(el));
-    el = el.parentElement;
+  const ancestors: {
+    tag: string;
+    attributes: Record<string, string>;
+  }[] = [];
+  let current: Element | null = element;
+  while (current && current !== document.body && ancestors.length < 15) {
+    ancestors.push(summarizeElement(current));
+    current = current.parentElement;
   }
 
   // 3. Diff container's direct children (siblings of the table, file header, etc.)
@@ -137,7 +140,7 @@ export function buildDebugInfo(element: Element): string {
   const diffContainer =
     table?.closest('[id^="diff-"]') || table?.parentElement?.parentElement;
   let containerChildren:
-    | { tag: string; attrs: Record<string, string> }[]
+    | { tag: string; attributes: Record<string, string> }[]
     | null = null;
   if (diffContainer) {
     containerChildren = Array.from(diffContainer.children).map(
@@ -149,7 +152,7 @@ export function buildDebugInfo(element: Element): string {
 }
 
 // Extract line number and side (new/old) from the selection
-function findLineNumber(node: Node): LineInfo | null {
+function findLineNumber(node: Node): LineLocation | null {
   const element =
     node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as Element);
   if (!element) return null;
@@ -157,10 +160,10 @@ function findLineNumber(node: Node): LineInfo | null {
   // React UI (split diff): the <td> itself carries side and line number
   const cell = element.closest("td[data-diff-side]");
   if (cell) {
-    const num = cell.getAttribute("data-line-number");
-    if (num) {
+    const lineNumber = cell.getAttribute("data-line-number");
+    if (lineNumber) {
       return {
-        line: Number.parseInt(num, 10),
+        line: Number.parseInt(lineNumber, 10),
         side: cell.getAttribute("data-diff-side") === "left" ? "old" : "new",
       };
     }
@@ -172,15 +175,15 @@ function findLineNumber(node: Node): LineInfo | null {
 
   const cells = row.querySelectorAll("[data-line-number]");
   if (cells.length >= 2) {
-    const num = cells[cells.length - 1].getAttribute("data-line-number");
-    if (num) {
-      return { line: Number.parseInt(num, 10), side: "new" };
+    const lineNumber = cells[cells.length - 1].getAttribute("data-line-number");
+    if (lineNumber) {
+      return { line: Number.parseInt(lineNumber, 10), side: "new" };
     }
   }
   if (cells.length >= 1) {
-    const num = cells[0].getAttribute("data-line-number");
-    if (num) {
-      return { line: Number.parseInt(num, 10), side: "old" };
+    const lineNumber = cells[0].getAttribute("data-line-number");
+    if (lineNumber) {
+      return { line: Number.parseInt(lineNumber, 10), side: "old" };
     }
   }
   return null;
@@ -208,11 +211,15 @@ export function getSelectionContext(): SelectionResult | null {
     ? findLineNumber(selection.focusNode)
     : null;
 
-  const prMatch = window.location.pathname.match(
+  const pullRequestMatch = window.location.pathname.match(
     /\/([^/]+)\/([^/]+)\/pull\/(\d+)/,
   );
-  const prInfo: PrInfo | null = prMatch
-    ? { owner: prMatch[1], repo: prMatch[2], number: prMatch[3] }
+  const pullRequest: PullRequest | null = pullRequestMatch
+    ? {
+        owner: pullRequestMatch[1],
+        repo: pullRequestMatch[2],
+        number: pullRequestMatch[3],
+      }
     : null;
 
   // Determine if the selection spans deleted lines
@@ -227,7 +234,7 @@ export function getSelectionContext(): SelectionResult | null {
     endLine: endInfo?.line || null,
     side,
     code: selectedText,
-    pr: prInfo,
+    pullRequest: pullRequest,
     url: window.location.href,
   };
   return { context, startElement };

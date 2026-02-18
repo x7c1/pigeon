@@ -1,11 +1,11 @@
 // Shared type definitions for the pigeon content script modules
 
-export interface LineInfo {
+export interface LineLocation {
   line: number;
   side: "old" | "new";
 }
 
-export interface PrInfo {
+export interface PullRequest {
   owner: string;
   repo: string;
   number: string;
@@ -17,7 +17,7 @@ export interface SelectionContext {
   endLine: number | null;
   side: string | null;
   code: string;
-  pr: PrInfo | null;
+  pullRequest: PullRequest | null;
   url: string;
 }
 

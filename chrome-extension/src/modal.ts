@@ -95,23 +95,25 @@ export async function showModal(
 ): Promise<void> {
   const overlay = createModal();
 
-  const loadingEl = overlay.querySelector(
+  const loadingElement = overlay.querySelector(
     "[data-pigeon-loading]",
   ) as HTMLElement;
-  const contentEl = overlay.querySelector(
+  const contentElement = overlay.querySelector(
     "[data-pigeon-content]",
   ) as HTMLElement;
-  const errorEl = overlay.querySelector("[data-pigeon-error]") as HTMLElement;
-  const selectEl = overlay.querySelector(
+  const errorElement = overlay.querySelector(
+    "[data-pigeon-error]",
+  ) as HTMLElement;
+  const selectElement = overlay.querySelector(
     "[data-pigeon-session]",
   ) as HTMLSelectElement;
-  const questionEl = overlay.querySelector(
+  const questionElement = overlay.querySelector(
     "[data-pigeon-question]",
   ) as HTMLTextAreaElement;
-  const sendBtn = overlay.querySelector(
+  const sendButton = overlay.querySelector(
     "[data-pigeon-send]",
   ) as HTMLButtonElement;
-  const cancelBtn = overlay.querySelector(
+  const cancelButton = overlay.querySelector(
     "[data-pigeon-cancel]",
   ) as HTMLButtonElement;
   const backdrop = overlay.querySelector(
@@ -121,70 +123,72 @@ export async function showModal(
   // Fetch sessions
   let sessions: string[] = [];
   try {
-    const resp = await fetchSessions();
-    if (!resp.ok) {
-      loadingEl.style.display = "none";
-      contentEl.style.display = "block";
-      errorEl.style.display = "block";
-      errorEl.textContent = resp.error || "Failed to list sessions";
-      sendBtn.disabled = true;
-      sendBtn.style.opacity = "0.5";
+    const response = await fetchSessions();
+    if (!response.ok) {
+      loadingElement.style.display = "none";
+      contentElement.style.display = "block";
+      errorElement.style.display = "block";
+      errorElement.textContent = response.error || "Failed to list sessions";
+      sendButton.disabled = true;
+      sendButton.style.opacity = "0.5";
     } else {
-      sessions = resp.sessions || [];
-      loadingEl.style.display = "none";
-      contentEl.style.display = "block";
+      sessions = response.sessions || [];
+      loadingElement.style.display = "none";
+      contentElement.style.display = "block";
 
       if (sessions.length === 0) {
-        errorEl.style.display = "block";
-        errorEl.textContent = "No tmux sessions found";
-        sendBtn.disabled = true;
-        sendBtn.style.opacity = "0.5";
+        errorElement.style.display = "block";
+        errorElement.textContent = "No tmux sessions found";
+        sendButton.disabled = true;
+        sendButton.style.opacity = "0.5";
       } else {
         for (const name of sessions) {
-          const opt = document.createElement("option");
-          opt.value = name;
-          opt.textContent = name;
-          selectEl.appendChild(opt);
+          const option = document.createElement("option");
+          option.value = name;
+          option.textContent = name;
+          selectElement.appendChild(option);
         }
         // Pre-select session matching the repo name by prefix
-        const repoName = context.pr?.repo;
+        const repoName = context.pullRequest?.repo;
         if (repoName) {
-          const match = sessions.find((s) => s.startsWith(repoName));
+          const match = sessions.find((session) =>
+            session.startsWith(repoName),
+          );
           if (match) {
-            selectEl.value = match;
+            selectElement.value = match;
           }
         }
       }
     }
-  } catch (e) {
+  } catch (error) {
     closeModal();
     showNotification(
-      `Failed to connect: ${e instanceof Error ? e.message : String(e)}`,
+      `Failed to connect: ${error instanceof Error ? error.message : String(error)}`,
       true,
     );
     return;
   }
 
   // Set placeholder text for the question
-  const s = context.startLine;
-  const e = context.endLine;
+  const startLine = context.startLine;
+  const endLine = context.endLine;
   let lineRange: string;
-  if (s && e && s !== e) {
-    lineRange = `${Math.min(s, e)}-${Math.max(s, e)}`;
+  if (startLine && endLine && startLine !== endLine) {
+    lineRange = `${Math.min(startLine, endLine)}-${Math.max(startLine, endLine)}`;
   } else {
-    lineRange = `${s || "?"}`;
+    lineRange = `${startLine || "?"}`;
   }
   const fileHint = `${context.file}:${lineRange}${context.side === "old" ? " (deleted)" : ""}`;
-  questionEl.placeholder = `Ask about ${fileHint}`;
-  questionEl.focus();
+  questionElement.placeholder = `Ask about ${fileHint}`;
+  questionElement.focus();
 
   // Event handlers
   const doSend = async () => {
-    const target = selectEl.value;
+    const target = selectElement.value;
     if (!target) return;
 
-    sendBtn.disabled = true;
-    sendBtn.textContent = "Sending...";
+    sendButton.disabled = true;
+    sendButton.textContent = "Sending...";
 
     const { debugMode } = await chrome.storage.local.get("debugMode");
     const payload = {
@@ -200,45 +204,45 @@ export async function showModal(
           : context.endLine,
       side: context.side,
       code: context.code,
-      question: questionEl.value || "",
+      question: questionElement.value || "",
       tmux_target: target,
       debug_html: debugMode ? buildDebugInfo(startElement) : undefined,
     };
 
     try {
-      const response: SendResponse = await chrome.runtime.sendMessage({
+      const sendResponse: SendResponse = await chrome.runtime.sendMessage({
         action: "sendToServer",
         payload,
       });
       closeModal();
-      if (response?.ok) {
+      if (sendResponse?.ok) {
         showNotification("Sent to tmux session");
       } else {
-        showNotification(response?.error || "Failed to send", true);
+        showNotification(sendResponse?.error || "Failed to send", true);
       }
-    } catch (e) {
+    } catch (error) {
       closeModal();
       showNotification(
-        `Extension error: ${e instanceof Error ? e.message : String(e)}`,
+        `Extension error: ${error instanceof Error ? error.message : String(error)}`,
         true,
       );
     }
   };
 
-  sendBtn.addEventListener("click", doSend);
-  cancelBtn.addEventListener("click", closeModal);
-  backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop) closeModal();
+  sendButton.addEventListener("click", doSend);
+  cancelButton.addEventListener("click", closeModal);
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) closeModal();
   });
 
   // Keyboard handling
-  const keyHandler = (e: KeyboardEvent) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
+  const keyHandler = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
       closeModal();
     }
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-      e.preventDefault();
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+      event.preventDefault();
       doSend();
     }
   };
