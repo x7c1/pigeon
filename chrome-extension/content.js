@@ -4,59 +4,57 @@
   "use strict";
   console.log("pigeon: content.js loaded");
 
-  // Find the closest diff table from the selection and extract file path
+  // Find the closest diff container from the selection and extract file path
   function findFilePath(element) {
-    // Find the diff table (table with data-diff-anchor attribute)
+    // Strategy 1: data-tagsearch-path / data-path on an ancestor (most reliable)
+    // closest() checks the element itself AND ancestors, unlike querySelector
+    const pathAncestor = element.closest(
+      "[data-tagsearch-path], [data-path]"
+    );
+    if (pathAncestor) {
+      const path =
+        pathAncestor.getAttribute("data-tagsearch-path") ||
+        pathAncestor.getAttribute("data-path");
+      if (path) return path;
+    }
+
+    // Strategy 2: Find the diff container and search within it
     const table = element.closest("table[data-diff-anchor]");
-    if (!table) return null;
+    const diffContainer = table
+      ? table.closest('[id^="diff-"]') || table.parentElement
+      : element.closest('[id^="diff-"]');
+    if (!diffContainer) return null;
 
-    // Walk up from the table to find the container with the file header
-    let container = table.parentElement;
-    while (container && container !== document.body) {
-      // Pattern 1: New GitHub UI - file path inside a.Link--primary > code
-      const linkWithCode = container.querySelector(
-        "a.Link--primary code, a.prc-Link-Link-9ZwDx code"
-      );
-      if (linkWithCode) {
-        // Strip invisible characters (LRM, ZWNJ, etc.) from textContent
-        const path = linkWithCode.textContent
-          .replace(/[\u200E\u200F\u200B\u200C\u200D\uFEFF]/g, "")
-          .trim();
-        if (path) return path;
+    // file path inside a link > code (GitHub Primer UI)
+    const linkWithCode = diffContainer.querySelector(
+      'a.Link--primary code, a[href*="#diff-"] code'
+    );
+    if (linkWithCode) {
+      // Strip invisible characters (LRM, ZWNJ, etc.) from textContent
+      const path = linkWithCode.textContent
+        .replace(/[\u200E\u200F\u200B\u200C\u200D\uFEFF]/g, "")
+        .trim();
+      if (path) return path;
+    }
+
+    // File path stored in a[title]
+    const link = diffContainer.querySelector(
+      'a[title][href*="#diff-"], a.Link--primary[title]'
+    );
+    if (link) {
+      const title = link.getAttribute("title");
+      if (title && (title.includes("/") || title.includes("."))) {
+        return title;
       }
+    }
 
-      // Pattern 2: File path stored in a[title]
-      const link = container.querySelector(
-        'a[title][href*="#diff-"], a.Link--primary[title]'
-      );
-      if (link) {
-        const title = link.getAttribute("title");
-        if (title && (title.includes("/") || title.includes("."))) {
-          return title;
-        }
+    // clipboard-copy button value
+    const copyBtn = diffContainer.querySelector("clipboard-copy[value]");
+    if (copyBtn) {
+      const val = copyBtn.getAttribute("value");
+      if (val && (val.includes("/") || val.includes("."))) {
+        return val;
       }
-
-      // Pattern 3: data-path / data-tagsearch-path attributes
-      const pathEl = container.querySelector(
-        '[data-path], [data-tagsearch-path]'
-      );
-      if (pathEl) {
-        return (
-          pathEl.getAttribute("data-path") ||
-          pathEl.getAttribute("data-tagsearch-path")
-        );
-      }
-
-      // Pattern 4: clipboard-copy button value
-      const copyBtn = container.querySelector("clipboard-copy[value]");
-      if (copyBtn) {
-        const val = copyBtn.getAttribute("value");
-        if (val && (val.includes("/") || val.includes("."))) {
-          return val;
-        }
-      }
-
-      container = container.parentElement;
     }
 
     return null;
