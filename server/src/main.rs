@@ -10,6 +10,7 @@ struct AskRequest {
     code: String,
     question: String,
     tmux_target: Option<String>,
+    debug_html: Option<String>,
 }
 
 /// Read a message using Native Messaging protocol (4-byte little-endian length prefix)
@@ -143,6 +144,14 @@ fn main() {
                 continue;
             }
         };
+
+        // Write debug HTML to file when file path extraction failed
+        if let Some(ref html) = req.debug_html {
+            if let Ok(home) = std::env::var("HOME") {
+                let debug_path = format!("{home}/.config/pigeon/debug.json");
+                let _ = std::fs::write(&debug_path, html);
+            }
+        }
 
         let message = format_message(&req);
         let target = resolve_tmux_target(req.tmux_target.as_deref());

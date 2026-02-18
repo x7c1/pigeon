@@ -3,7 +3,10 @@
   "name": "Pigeon",
   "version": "0.1.0",
   "description": "Send selected code from GitHub PR diffs to a CLI tool via tmux",
-  "permissions": ["contextMenus", "activeTab", "nativeMessaging"],
+  "permissions": ["contextMenus", "activeTab", "nativeMessaging", "storage"],
+  "action": {
+    "default_popup": "popup.html"
+  },
   "host_permissions": [
     "https://github.com/*"
   ],

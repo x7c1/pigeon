@@ -4,10 +4,21 @@
   "use strict";
   console.log("pigeon: content.js loaded");
 
-  // Find the closest diff container from the selection and extract file path
-  function findFilePath(element) {
-    // Strategy 1: data-tagsearch-path / data-path on an ancestor (most reliable)
-    // closest() checks the element itself AND ancestors, unlike querySelector
+  // Extract file path from a table's aria-label (React UI)
+  // e.g. "Diff for: path/to/file.ts"
+  // e.g. "Diff for: old/path.ts renamed to new/path.ts"
+  function parseAriaLabel(table) {
+    const ariaLabel = table?.getAttribute("aria-label");
+    if (!ariaLabel?.startsWith("Diff for: ")) return null;
+    const pathPart = ariaLabel.slice("Diff for: ".length);
+    const idx = pathPart.indexOf(" renamed to ");
+    return idx >= 0 ? pathPart.slice(idx + " renamed to ".length) : pathPart;
+  }
+
+  // Find the closest diff container from the selection and extract file path.
+  // When debugTrace is provided, each strategy records what it tried and found.
+  function findFilePath(element, debugTrace) {
+    // Strategy 1: data-tagsearch-path / data-path on an ancestor (classic UI)
     const pathAncestor = element.closest(
       "[data-tagsearch-path], [data-path]"
     );
@@ -15,49 +26,112 @@
       const path =
         pathAncestor.getAttribute("data-tagsearch-path") ||
         pathAncestor.getAttribute("data-path");
-      if (path) return path;
+      if (path) {
+        if (debugTrace) debugTrace.push({ strategy: 1, found: path });
+        return path;
+      }
+    }
+    if (debugTrace) debugTrace.push({ strategy: 1, found: null });
+
+    // Strategy 2: aria-label on the diff table (React UI)
+    const table = element.closest("table[data-diff-anchor]");
+    const ariaPath = parseAriaLabel(table);
+    if (ariaPath) {
+      if (debugTrace) debugTrace.push({ strategy: 2, found: ariaPath });
+      return ariaPath;
+    }
+    if (debugTrace) {
+      debugTrace.push({
+        strategy: 2,
+        found: null,
+        tableAriaLabel: table?.getAttribute("aria-label") ?? null,
+      });
     }
 
-    // Strategy 2: Find the diff container and search within it
-    const table = element.closest("table[data-diff-anchor]");
+    // Strategy 3: Find the diff container and search within it
     const diffContainer = table
       ? table.closest('[id^="diff-"]') || table.parentElement
       : element.closest('[id^="diff-"]');
-    if (!diffContainer) return null;
+    if (!diffContainer) {
+      if (debugTrace) debugTrace.push({ strategy: 3, found: null, reason: "no diffContainer" });
+      return null;
+    }
 
-    // file path inside a link > code (GitHub Primer UI)
     const linkWithCode = diffContainer.querySelector(
       'a.Link--primary code, a[href*="#diff-"] code'
     );
     if (linkWithCode) {
-      // Strip invisible characters (LRM, ZWNJ, etc.) from textContent
       const path = linkWithCode.textContent
         .replace(/[\u200E\u200F\u200B\u200C\u200D\uFEFF]/g, "")
         .trim();
-      if (path) return path;
+      if (path) {
+        if (debugTrace) debugTrace.push({ strategy: "3-link-code", found: path });
+        return path;
+      }
     }
 
-    // File path stored in a[title]
     const link = diffContainer.querySelector(
       'a[title][href*="#diff-"], a.Link--primary[title]'
     );
     if (link) {
       const title = link.getAttribute("title");
       if (title && (title.includes("/") || title.includes("."))) {
+        if (debugTrace) debugTrace.push({ strategy: "3-title", found: title });
         return title;
       }
     }
 
-    // clipboard-copy button value
     const copyBtn = diffContainer.querySelector("clipboard-copy[value]");
     if (copyBtn) {
       const val = copyBtn.getAttribute("value");
       if (val && (val.includes("/") || val.includes("."))) {
+        if (debugTrace) debugTrace.push({ strategy: "3-clipboard", found: val });
         return val;
       }
     }
 
+    if (debugTrace) {
+      debugTrace.push({
+        strategy: 3,
+        found: null,
+        diffContainerId: diffContainer.id || null,
+      });
+    }
     return null;
+  }
+
+  // Summarize an element: tag, key attributes (truncated)
+  function summarizeElement(el) {
+    const attrs = {};
+    for (const attr of el.attributes || []) {
+      attrs[attr.name] = attr.value.substring(0, 200);
+    }
+    return { tag: el.tagName.toLowerCase(), attrs };
+  }
+
+  // Build debug info: strategy trace + DOM context around the selection
+  function buildDebugInfo(element) {
+    // 1. Strategy execution trace
+    const trace = [];
+    findFilePath(element, trace);
+
+    // 2. Ancestor chain from selection to body
+    const ancestors = [];
+    let el = element;
+    while (el && el !== document.body && ancestors.length < 15) {
+      ancestors.push(summarizeElement(el));
+      el = el.parentElement;
+    }
+
+    // 3. Diff container's direct children (siblings of the table, file header, etc.)
+    const table = element.closest("table[data-diff-anchor]") || element.closest("table");
+    const diffContainer = table?.closest('[id^="diff-"]') || table?.parentElement?.parentElement;
+    let containerChildren = null;
+    if (diffContainer) {
+      containerChildren = Array.from(diffContainer.children).map(summarizeElement);
+    }
+
+    return JSON.stringify({ trace, ancestors, containerChildren });
   }
 
   // Extract line number from the selection
@@ -99,7 +173,7 @@
       ? { owner: prMatch[1], repo: prMatch[2], number: prMatch[3] }
       : null;
 
-    return {
+    const context = {
       file: filePath || "(unknown file)",
       startLine,
       endLine,
@@ -107,10 +181,12 @@
       pr: prInfo,
       url: window.location.href,
     };
+    return { context, startElement };
   }
 
   // Send to server via background script (to avoid CORS)
-  async function sendToTmux(context, question) {
+  async function sendToTmux(context, question, startElement) {
+    const { debugMode } = await chrome.storage.local.get("debugMode");
     const payload = {
       file: context.file,
       start_line: context.startLine,
@@ -120,6 +196,7 @@
       tmux_target: context.pr?.repo || "",
       pr: context.pr,
       url: context.url,
+      debug_html: debugMode ? buildDebugInfo(startElement) : undefined,
     };
 
     try {
@@ -156,13 +233,14 @@
   // Handle messages from context menu
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === "pigeonSend") {
-      const context = getSelectionContext();
-      if (!context) {
+      const result = getSelectionContext();
+      if (!result) {
         showNotification("No code selected", true);
         sendResponse({ ok: false });
         return;
       }
 
+      const { context, startElement } = result;
       const question = prompt(
         `Ask about ${context.file}:${context.startLine || "?"}`,
         ""
@@ -172,7 +250,7 @@
         return;
       }
 
-      sendToTmux(context, question);
+      sendToTmux(context, question, startElement);
       sendResponse({ ok: true });
     }
   });
@@ -181,19 +259,20 @@
   document.addEventListener("keydown", (e) => {
     if (e.ctrlKey && e.shiftKey && e.key === "L") {
       e.preventDefault();
-      const context = getSelectionContext();
-      if (!context) {
+      const result = getSelectionContext();
+      if (!result) {
         showNotification("No code selected", true);
         return;
       }
 
+      const { context, startElement } = result;
       const question = prompt(
         `Ask about ${context.file}:${context.startLine || "?"}`,
         ""
       );
       if (question === null) return;
 
-      sendToTmux(context, question);
+      sendToTmux(context, question, startElement);
     }
   });
 })();
