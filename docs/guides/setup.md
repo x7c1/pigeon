@@ -31,11 +31,16 @@ Uses Chrome's Native Messaging instead of an HTTP server, so there's no need to 
 
 ## Usage
 
-1. Start your CLI tool in tmux:
+1. Start your CLI tool in a tmux session. The session name should match one of:
+   - The **repository name** from the PR you're reviewing (this is the default target sent by the extension)
+   - `claude` (the fallback default)
+
    ```bash
+   # Use the repo name (e.g. "pigeon" for x7c1/pigeon)
+   tmux new-session -s pigeon
+
+   # Or use the fallback default
    tmux new-session -s claude
-   cd /path/to/your/repo
-   claude
    ```
 2. Open a PR on GitHub → Files changed (or Changes)
 3. Select some code
