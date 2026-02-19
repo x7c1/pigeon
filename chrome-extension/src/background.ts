@@ -1,18 +1,18 @@
-// background.js - Context menu + Native Messaging relay to tmux
+// background.ts - Context menu + Native Messaging relay to tmux
 
 const NATIVE_HOST = "pigeon";
-let port = null;
+let port: chrome.runtime.Port | null = null;
 
-function getPort() {
+function getPort(): chrome.runtime.Port {
   if (!port) {
     port = chrome.runtime.connectNative(NATIVE_HOST);
-    port.onDisconnect.addListener(() => {
+    port.onDisconnect.addListener((p) => {
       port = null;
-      if (chrome.runtime.lastError) {
-        console.error(
-          "pigeon: Native host disconnected:",
-          chrome.runtime.lastError.message
-        );
+      // chrome.runtime.lastError is not in chrome-types MV3 defs;
+      // the port-level error is available via p.
+      const err = (p as unknown as { error?: { message: string } }).error;
+      if (err) {
+        console.error("pigeon: Native host disconnected:", err.message);
       }
     });
   }
@@ -31,21 +31,20 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-// TODO: extract action names ("pigeonSend", "sendToServer") into shared constants after TS migration
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === "pigeon-send") {
+  if (info.menuItemId === "pigeon-send" && tab?.id != null) {
     chrome.tabs.sendMessage(tab.id, { action: "pigeonSend" });
   }
 });
 
 // Relay requests from content script via Native Messaging
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.action === "sendToServer") {
     try {
       const p = getPort();
 
       // Receive response only once
-      const listener = (response) => {
+      const listener = (response: unknown) => {
         p.onMessage.removeListener(listener);
         sendResponse(response);
       };

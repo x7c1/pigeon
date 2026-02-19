@@ -1,7 +1,7 @@
 export HOST_UID := $(shell id -u)
 export HOST_GID := $(shell id -g)
 
-.PHONY: help claude-setup claude-run workspace
+.PHONY: help claude-setup claude-run workspace ext-build ext-check ext-typecheck
 
 .DEFAULT_GOAL := help
 
@@ -18,3 +18,12 @@ claude-run: claude-setup ## Run Claude Code in Docker container
 	docker compose run --rm claude-code
 
 workspace: claude-run ## Alias for claude-run
+
+ext-build: ## Build Chrome extension (TS → dist/)
+	cd chrome-extension && npm run build
+
+ext-check: ## Lint and format Chrome extension with Biome
+	cd chrome-extension && npm run check
+
+ext-typecheck: ## Type-check Chrome extension with TypeScript
+	cd chrome-extension && npm run typecheck

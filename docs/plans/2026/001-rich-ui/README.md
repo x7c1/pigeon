@@ -1,6 +1,6 @@
 # Rich UI
 
-Status: Draft
+Status: Open
 
 ## Overview
 
