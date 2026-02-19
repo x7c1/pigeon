@@ -1,6 +1,6 @@
 # Session Selection Modal
 
-Status: Open
+Status: Completed
 
 ## Overview
 
@@ -50,6 +50,7 @@ enum Request {
 - `action: "list-sessions"` — run `tmux list-sessions -F "#{session_name}"` and return an array of session names
 
 Remove `resolve_tmux_target` and the config file (`~/.config/pigeon/config` `tmux_target=`) support. The modal always provides an explicit target.
+
 Response example (list-sessions):
 ```json
 {

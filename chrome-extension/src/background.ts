@@ -19,6 +19,29 @@ function getPort(): chrome.runtime.Port {
   return port;
 }
 
+function relayToNativeHost(
+  payload: unknown,
+  sendResponse: (response: unknown) => void,
+): void {
+  try {
+    const p = getPort();
+
+    const listener = (response: unknown) => {
+      p.onMessage.removeListener(listener);
+      sendResponse(response);
+    };
+    p.onMessage.addListener(listener);
+
+    p.postMessage(payload);
+  } catch (e) {
+    sendResponse({
+      ok: false,
+      error:
+        "Cannot connect to native host. Is pigeon-host installed? Run install.sh.",
+    });
+  }
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "pigeon-send",
@@ -39,26 +62,13 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 // Relay requests from content script via Native Messaging
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg.action === "listSessions") {
+    relayToNativeHost({ action: "list-sessions" }, sendResponse);
+    return true;
+  }
+
   if (msg.action === "sendToServer") {
-    try {
-      const p = getPort();
-
-      // Receive response only once
-      const listener = (response: unknown) => {
-        p.onMessage.removeListener(listener);
-        sendResponse(response);
-      };
-      p.onMessage.addListener(listener);
-
-      p.postMessage(msg.payload);
-    } catch (e) {
-      sendResponse({
-        ok: false,
-        error:
-          "Cannot connect to native host. Is pigeon-host installed? Run install.sh.",
-      });
-    }
-
-    return true; // async response
+    relayToNativeHost(msg.payload, sendResponse);
+    return true;
   }
 });
