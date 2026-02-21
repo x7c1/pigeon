@@ -1,0 +1,14 @@
+{
+  "extraKnownMarketplaces": {
+    "strata-dev": {
+      "source": {
+        "source": "github",
+        "repo": "x7c1/strata"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "workflows@strata-dev": true,
+    "statusline@strata-dev": true
+  }
+}
