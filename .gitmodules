@@ -1,3 +1,0 @@
-[submodule "vendor/strata"]
-	path = vendor/strata
-	url = git@github.com:x7c1/strata.git
